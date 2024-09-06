@@ -1,0 +1,5 @@
+# Ignore environment files
+
+credentials/client_secret.json
+credentials/tokens.json
+node_modules/

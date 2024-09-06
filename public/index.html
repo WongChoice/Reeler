@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clip Requests</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+    }
+
+    th, td {
+      padding: 10px;
+      border: 1px solid #ddd;
+      text-align: left;
+      vertical-align: top; /* Ensure content aligns to the top */
+    }
+
+    th {
+      background-color: #f4f4f4;
+    }
+
+    button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 14px;
+      margin: 5px 2px;
+      cursor: pointer;
+    }
+
+    .delete-btn {
+      background-color: #f44336;
+    }
+
+    .delete-btn:hover {
+      background-color: #c62828;
+    }
+
+    .download-btn {
+      background-color: #008CBA;
+    }
+
+    .disabled {
+      background-color: #ddd;
+      cursor: not-allowed;
+    }
+
+    .transcript {
+      display: inline-block;
+      padding: 5px;
+      border-radius: 5px;
+      margin: 0;
+      font-family: Arial, sans-serif;
+    }
+
+    .transcript-inputs {
+      margin-top: 10px;
+    }
+
+    .transcript-settings,
+    .crop-settings {
+      display: flex;
+      align-items: center; /* Vertically align items in the center */
+      gap: 10px; /* Space between items */
+      margin-top: 10px;
+    }
+
+    .transcript-settings input,
+    .transcript-settings label,
+    .crop-settings input,
+    .crop-settings label {
+      margin: 0;
+    }
+
+    .transcript-settings button,
+    .crop-settings button {
+      margin-top: 10px;
+      background-color: #4CAF50;
+    }
+
+    .upload-section textarea {
+      width: 100%;
+      margin-bottom: 5px;
+    }
+
+    .upload-section label {
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>Clip Requests</h1>
+
+  <table id="clip-requests">
+    <thead>
+      <tr>
+        <th>URL</th>
+        <th>Start Time</th>
+        <th>End Time</th>
+        <th>Transcript</th>
+        <th>Actions</th>
+        <th>Upload</th> <!-- New column for Upload -->
+      </tr>
+    </thead>
+    <tbody>
+      <!-- Data will be populated here -->
+    </tbody>
+  </table>
+
+  <script>
+    // Store request data
+    const requestsData = {};
+
+    // Fetch and display clip requests
+    function fetchRequests() {
+      fetch('/requests')
+        .then(response => response.json())
+        .then(requests => {
+          const tableBody = document.querySelector('#clip-requests tbody');
+          tableBody.innerHTML = ''; // Clear existing content
+          requests.forEach(request => {
+            // Store request data
+            requestsData[request.id] = request;
+
+            // Convert transcript array to a readable string
+            const transcriptText = request.transcript.map(item => item.text).join('\n');
+
+            const row = document.createElement('tr');
+            row.dataset.id = request.id; // Add a data-id attribute for easy reference
+            row.innerHTML = `
+              <td>${request.url}</td>
+              <td>${formatTime(request.start)}</td>
+              <td>${formatTime(request.end)}</td>
+              <td>
+                <div>
+                  <span class="transcript" style="background-color: ${request.bgColor}; color: ${request.textColor}; font-size: ${request.fontsize}px;">${transcriptText}</span>
+                </div>
+                <div class="transcript-inputs">
+                  <!-- Commented out transcript editing area -->
+                  <!-- <textarea id="transcript-${request.id}" placeholder="Edit transcript..." rows="5">${transcriptText}</textarea> -->
+                  <textarea id="additionalText-${request.id}" placeholder="Additional text..." rows="2"></textarea>
+                  <div class="transcript-settings">
+                    <label for="bgColor-${request.id}">Background Color:</label>
+                    <input type="color" id="bgColor-${request.id}" value="${request.bgColor}">
+                    <label for="textColor-${request.id}">Text Color:</label>
+                    <input type="color" id="textColor-${request.id}" value="${request.textColor}">
+                    <label for="fontsize-${request.id}">Font Size:</label>
+                    <input type="number" id="fontsize-${request.id}" value="${request.fontsize || 24}" min="10" max="50">
+                  </div>
+                </div>
+              </td>
+              <td>
+                <button onclick="exportClip(${request.id})">Export Clip</button>
+                ${request.outputFileName
+                  ? `<a href="/download/${request.id}" download>
+                        <button class="download-btn">Download</button>
+                     </a>`
+                  : `<button class="download-btn disabled" disabled>Download</button>`
+                }
+                <button onclick="embedSubtitle(${request.id})">Embed Subtitle</button>
+                <button onclick="embedAdditionalText(${request.id})">Embed Additional Text</button>
+                <div class="crop-settings">
+                  <label for="cropAspect-${request.id}">Aspect Ratio:</label>
+                  <select id="cropAspect-${request.id}">
+                    <option value="9:16">9:16</option>
+                    <option value="1:1">1:1</option>
+                    <option value="center">Center</option>
+                  </select>
+                  <button onclick="applyCrop(${request.id})">Apply Crop</button>
+                </div>
+                <button class="delete-btn" onclick="deleteRequest(${request.id})">Delete</button>
+              </td>
+              <td> <!-- New Upload column -->
+                <div class="upload-section">
+                  <label for="title-${request.id}">Title:</label>
+                  <textarea id="title-${request.id}" rows="1" placeholder="Enter title..."></textarea>
+
+                  <label for="description-${request.id}">Description:</label>
+                  <textarea id="description-${request.id}" rows="2" placeholder="Enter description..."></textarea>
+
+                  <label for="tags-${request.id}">Tags:</label>
+                  <textarea id="tags-${request.id}" rows="1" placeholder="Enter tags..."></textarea>
+
+                  <button onclick="uploadToYouTube(${request.id})">Upload to YouTube</button>
+                </div>
+              </td>
+            `;
+            tableBody.appendChild(row);
+          });
+        })
+        .catch(error => {
+          console.error('Error fetching requests:', error);
+          alert('Failed to fetch requests. Please try again.');
+        });
+    }
+
+    // Helper function to format time (example: convert seconds to "mm:ss" format)
+    function formatTime(seconds) {
+      const minutes = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
+    // Function to handle clip export
+    function exportClip(id) {
+      fetch('/export', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ id })
+      })
+        .then(response => response.json())
+        .then(result => {
+          alert('Clip export initiated: ' + result.message);
+          fetchRequests(); // Refresh the list to show download button
+        })
+        .catch(error => {
+          console.error('Error exporting clip:', error);
+          alert('Failed to export clip. Please try again.');
+        });
+    }
+
+    // Function to handle embedding subtitles onto the video
+    function embedSubtitle(id) {
+      const request = requestsData[id];
+      if (!request) {
+        alert('Request data not found.');
+        return;
+      }
+
+      const transcriptArray = request.transcript.map(item => ({
+        time: item.time,
+        text: item.text
+      }));
+
+      const bgColor = document.getElementById(`bgColor-${id}`).value;
+      const textColor = document.getElementById(`textColor-${id}`).value;
+      const fontsize = document.getElementById(`fontsize-${id}`).value;
+
+      fetch('/add-subtitle', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ id, subtitleText: transcriptArray, bgColor, textColor, fontsize })
+      })
+        .then(response => response.json())
+        .then(result => {
+          alert('Subtitle embedding initiated: ' + result.message);
+          fetchRequests();
+        })
+        .catch(error => {
+          console.error('Error embedding subtitle:', error);
+          alert('Failed to embed subtitle. Please try again.');
+        });
+    }
+
+    // Function to handle updating the transcript
+    function updateTranscript(id) {
+      const updatedTranscript = document.getElementById(`transcript-${id}`).value.split('\n').map(text => ({ text }));
+
+      fetch(`/requests/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ transcript: updatedTranscript })
+      })
+        .then(response => response.json())
+        .then(result => {
+          alert(result.message);
+          fetchRequests();
+        })
+        .catch(error => {
+          console.error('Error updating transcript:', error);
+          alert('Failed to update transcript. Please try again.');
+        });
+    }
+
+    // Function to handle request deletion
+    function deleteRequest(id) {
+      fetch(`/requests/${id}`, {
+        method: 'DELETE'
+      })
+        .then(response => response.json())
+        .then(result => {
+          alert(result.message);
+          fetchRequests();
+        })
+        .catch(error => {
+          console.error('Error deleting request:', error);
+          alert('Failed to delete request. Please try again.');
+        });
+    }
+
+    // Function to handle cropping video for a specific request
+    function applyCrop(id) {
+      const aspectRatio = document.getElementById(`cropAspect-${id}`).value;
+
+      fetch('/crop-video', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ id, ratio: aspectRatio })
+      })
+        .then(response => response.json())
+        .then(result => {
+          alert('Video cropping initiated: ' + result.message);
+        })
+        .catch(error => {
+          console.error('Error cropping video:', error);
+          alert('Failed to crop video. Please try again.');
+        });
+    }
+
+    // Function to handle embedding additional text onto the video
+    function embedAdditionalText(id) {
+      const request = requestsData[id];
+      if (!request) {
+        alert('Request data not found.');
+        return;
+      }
+
+      const additionalText = document.getElementById(`additionalText-${id}`).value;
+      const bgColor = document.getElementById(`bgColor-${id}`).value;
+      const textColor = document.getElementById(`textColor-${id}`).value;
+      const fontsize = document.getElementById(`fontsize-${id}`).value || 24;
+
+      fetch('/add-additional-text', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ id, additionalText, bgColor, textColor, fontsize })
+      })
+        .then(response => response.json())
+        .then(result => {
+          alert('Additional text embedding initiated: ' + result.message);
+          fetchRequests();
+        })
+        .catch(error => {
+          console.error('Error embedding additional text:', error);
+          alert('Failed to embed additional text. Please try again.');
+        });
+    }
+
+    // Function to handle uploading to YouTube
+    function uploadToYouTube(id) {
+      const title = document.getElementById(`title-${id}`).value;
+      const description = document.getElementById(`description-${id}`).value;
+      const tags = document.getElementById(`tags-${id}`).value.split(',');
+
+      fetch('/upload-to-youtube', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ id, title, description, tags })
+      })
+        .then(response => response.json())
+        .then(result => {
+          alert('Upload to YouTube initiated: ' + result.message);
+        })
+        .catch(error => {
+          console.error('Error uploading to YouTube:', error);
+          alert('Failed to upload to YouTube. Please try again.');
+        });
+    }
+
+    // Initial fetch
+    fetchRequests();
+  </script>
+</body>
+</html>
